@@ -1,18 +1,42 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
-import { SphereGeometry, MeshBasicMaterial, TextureLoader, MeshPhongMaterial } from 'three';
+import { SphereGeometry, MeshBasicMaterial, TextureLoader, MeshPhongMaterial, BufferGeometry, LineBasicMaterial, Float32BufferAttribute } from 'three';
+import { Line } from '@react-three/drei';
+
+function BalloonPath({ path, color }) {
+    const points = useMemo(() => {
+        return path.map(pos => {
+            const lat = pos.latitude * (Math.PI / 180);
+            const lng = pos.longitude * (Math.PI / 180);
+            const radius = 1 + (pos.altitude * 0.02); // Match balloon altitude scaling
+
+            return [
+                radius * Math.cos(lat) * Math.cos(lng),
+                radius * Math.sin(lat),
+                radius * Math.cos(lat) * Math.sin(lng)
+            ];
+        });
+    }, [path]);
+
+    return (
+        <Line
+            points={points}
+            color={color}
+            lineWidth={1}
+            opacity={0.5}
+            transparent
+        />
+    );
+}
 
 function Balloon({ latitude, longitude, altitude, color }) {
     const geometry = useMemo(() => new SphereGeometry(0.01, 16, 16), []);
     const material = useMemo(() => new MeshBasicMaterial({ color }), [color]);
 
-    // Convert latitude and longitude to radians
     const lat = latitude * (Math.PI / 180);
     const lng = longitude * (Math.PI / 180);
-
-    // Calculate the position on the sphere
-    const radius = 1 + (altitude * 0.05);
+    const radius = 1 + (altitude * 0.02);
     const x = radius * Math.cos(lat) * Math.cos(lng);
     const y = radius * Math.sin(lat);
     const z = radius * Math.cos(lat) * Math.sin(lng);
@@ -47,11 +71,7 @@ function Earth() {
     );
 }
 
-function Scene({ balloonData }) {
-    useEffect(() => {
-        console.log("Scene received balloon data:", balloonData?.length);
-    }, [balloonData]);
-
+function Scene({ balloonData, balloonPaths, isAutoRotating }) {
     return (
         <Canvas camera={{ position: [0, 0, 2.5], fov: 45 }}>
             <color attach="background" args={['#111827']} />
@@ -64,9 +84,17 @@ function Scene({ balloonData }) {
 
             <Earth />
 
-            {balloonData && balloonData.map((balloon) => (
+            {balloonPaths.map((path, index) => (
+                <BalloonPath
+                    key={`path-${index}`}
+                    path={path}
+                    color={path[0]?.color}
+                />
+            ))}
+
+            {balloonData.map((balloon) => (
                 <Balloon
-                    key={balloon.id}
+                    key={`balloon-${balloon.id}`}
                     latitude={balloon.latitude}
                     longitude={balloon.longitude}
                     altitude={balloon.altitude}
@@ -79,7 +107,7 @@ function Scene({ balloonData }) {
                 enableZoom={true}
                 minDistance={1.5}
                 maxDistance={4}
-                autoRotate
+                autoRotate={isAutoRotating}
                 autoRotateSpeed={0.5}
             />
         </Canvas>
