@@ -180,7 +180,23 @@ const BalloonGlobe = () => {
         });
 
         if (forecastPaths.length === 0) {
-            console.log('No forecast paths available, fetching...');
+            console.log('No forecast paths available, using last known positions');
+            // Instead of returning, use the last known positions
+            currentBalloons = allBalloonData[23].map(balloon => ({
+                ...balloon,
+                color: '#ff0000', // Red for forecast position
+                isForecast: true
+            }));
+
+            // Use historical paths while forecasts are loading
+            balloonPaths = allBalloonData[23].map((_, index) => {
+                return allBalloonData.map(hourData => ({
+                    ...hourData[index],
+                    isForecast: false
+                }));
+            });
+
+            // Trigger forecast fetch
             const currentPositions = allBalloonData[23];
             currentPositions.forEach(async (balloon, index) => {
                 const path = await getForecastPath(
@@ -196,57 +212,56 @@ const BalloonGlobe = () => {
                     });
                 }
             });
-            return; // Wait for forecasts to be fetched
-        }
+        } else {
+            // Get all historical paths
+            balloonPaths = allBalloonData[23].map((_, index) => {
+                // Get complete historical path
+                const historicalPath = allBalloonData.map(hourData => ({
+                    ...hourData[index],
+                    isForecast: false
+                }));
 
-        // Get all historical paths
-        balloonPaths = allBalloonData[23].map((_, index) => {
-            // Get complete historical path
-            const historicalPath = allBalloonData.map(hourData => ({
-                ...hourData[index],
-                isForecast: false
-            }));
+                // Get forecast path up to current forecast hour
+                const forecastPath = forecastPaths[index] || [];
+                const currentForecast = forecastPath.slice(0, forecastHour + 1).map(pos => ({
+                    ...pos,
+                    isForecast: true
+                }));
 
-            // Get forecast path up to current forecast hour
-            const forecastPath = forecastPaths[index] || [];
-            const currentForecast = forecastPath.slice(0, forecastHour + 1).map(pos => ({
-                ...pos,
-                isForecast: true
-            }));
+                console.log(`Balloon ${index} path data:`, {
+                    historicalLength: historicalPath.length,
+                    forecastLength: currentForecast.length,
+                    totalLength: historicalPath.length + currentForecast.length
+                });
 
-            console.log(`Balloon ${index} path data:`, {
-                historicalLength: historicalPath.length,
-                forecastLength: currentForecast.length,
-                totalLength: historicalPath.length + currentForecast.length
+                return [...historicalPath, ...currentForecast];
             });
 
-            return [...historicalPath, ...currentForecast];
-        });
+            // Set current balloon positions from forecast data
+            currentBalloons = forecastPaths.map((path, index) => {
+                if (!path || !path[forecastHour]) {
+                    console.log(`Missing forecast position for balloon ${index} at hour ${forecastHour}`);
+                    return null;
+                }
 
-        // Set current balloon positions from forecast data
-        currentBalloons = forecastPaths.map((path, index) => {
-            if (!path || !path[forecastHour]) {
-                console.log(`Missing forecast position for balloon ${index} at hour ${forecastHour}`);
-                return null;
-            }
+                const pos = path[forecastHour];
+                console.log(`Current forecast position for balloon ${index}:`, pos);
 
-            const pos = path[forecastHour];
-            console.log(`Current forecast position for balloon ${index}:`, pos);
+                return {
+                    id: index,
+                    latitude: pos.latitude,
+                    longitude: pos.longitude,
+                    altitude: pos.altitude,
+                    color: '#ff0000', // Red for forecast position
+                    isForecast: true
+                };
+            }).filter(Boolean);
 
-            return {
-                id: index,
-                latitude: pos.latitude,
-                longitude: pos.longitude,
-                altitude: pos.altitude,
-                color: '#ff0000', // Red for forecast position
-                isForecast: true
-            };
-        }).filter(Boolean);
-
-        console.log('Forecast render data:', {
-            pathCount: balloonPaths.length,
-            balloonCount: currentBalloons.length
-        });
+            console.log('Forecast render data:', {
+                pathCount: balloonPaths.length,
+                balloonCount: currentBalloons.length
+            });
+        }
     }
 
     return (

@@ -64,8 +64,12 @@ export async function getForecastPath(lat, lon, altitude) {
             return forecastCache.get(cacheKey);
         }
 
+        // Default to mock weather if no API key is available
+        const useMockWeather = !process.env.NEXT_PUBLIC_OPENWEATHERMAP_API_KEY ||
+            process.env.NEXT_PUBLIC_USE_MOCK_WEATHER === 'true';
+
         let weatherData;
-        if (process.env.NEXT_PUBLIC_USE_MOCK_WEATHER === 'true') {
+        if (useMockWeather) {
             console.log('Using mock weather data');
             weatherData = await mockWeatherForecast(lat, lon);
         } else {
@@ -76,6 +80,7 @@ export async function getForecastPath(lat, lon, altitude) {
             const response = await fetch(apiUrl);
 
             if (!response.ok) {
+                console.error('Weather API returned status:', response.status);
                 throw new Error(`Weather API error: ${response.status}`);
             }
 
@@ -134,10 +139,24 @@ export async function getForecastPath(lat, lon, altitude) {
 
         // Cache the result
         forecastCache.set(cacheKey, forecastPath);
+
         return forecastPath;
 
     } catch (error) {
         console.error('Error in getForecastPath:', error);
-        return null;
+
+        // Instead of returning null, return a simple straight-line forecast
+        const staticForecast = Array.from({ length: 24 }, (_, hour) => ({
+            latitude: lat,
+            longitude: lon,
+            altitude: altitude,
+            hour: hour,
+            isForecast: true
+        }));
+
+        // Still cache this fallback forecast
+        forecastCache.set(getCacheKey(lat, lon), staticForecast);
+
+        return staticForecast;
     }
 }
