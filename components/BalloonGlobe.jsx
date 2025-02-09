@@ -1,81 +1,64 @@
-import React, { useState, useEffect } from 'react';
-import {
-  ComposableMap,
-  Geographies,
-  Geography,
-  Line,
-  Marker
-} from "react-simple-maps";
+import React, { useEffect, useState, Suspense } from 'react';
+import dynamic from 'next/dynamic';
 
-const geoUrl = "https://raw.githubusercontent.com/deldersveld/topojson/master/world-countries.json";
+// Dynamically import Three.js components with no SSR
+const ThreeComponents = dynamic(() =>
+        import('./ThreeComponents').then((mod) => mod.default),
+    { ssr: false }
+);
 
 const BalloonGlobe = () => {
-  const [balloonPaths, setBalloonPaths] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [balloonData, setBalloonData] = useState([]);
   const [currentHour, setCurrentHour] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const fetchAllData = async () => {
+    const loadBalloonData = async () => {
       try {
-        setLoading(true);
+        setIsLoading(true);
+        // Fetch from your API endpoint
         const response = await fetch('/api/balloons');
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to fetch data');
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-        const allData = await response.json();
+        const hourlyData = await response.json();
 
-        // Validate data structure
-        if (!Array.isArray(allData) || allData.length !== 24) {
-          throw new Error('Invalid data format: expected 24 hours of data');
-        }
+        console.log("Loaded hourly data:", hourlyData.length, "hours");
 
-        // Process the data to create balloon paths
-        const paths = [];
-        const firstHourData = allData[0];
+        // Get the first hour with valid data
+        const firstHourData = hourlyData.find(hour =>
+            Array.isArray(hour) && hour.length > 0 &&
+            hour.some(coord => coord[0] !== 0 || coord[1] !== 0 || coord[2] !== 0)
+        ) || hourlyData[0];
 
-        if (!Array.isArray(firstHourData)) {
-          throw new Error('Invalid data format: expected array of balloon positions');
-        }
+        console.log("First hour balloon count:", firstHourData?.length || 0);
 
-        for (let balloonIndex = 0; balloonIndex < firstHourData.length; balloonIndex++) {
-          try {
-            const path = allData.map((hourData, hourIndex) => {
-              const position = hourData[balloonIndex];
-              if (!Array.isArray(position) || position.length !== 3) {
-                throw new Error(`Invalid position data for balloon ${balloonIndex} at hour ${hourIndex}`);
-              }
-              return {
-                coordinates: [position[1], position[0]], // [lng, lat]
-                altitude: position[2],
-                hour: hourIndex
-              };
-            });
-            paths.push(path);
-          } catch (error) {
-            console.error(`Error processing balloon ${balloonIndex}:`, error);
-            // Skip this balloon
-            continue;
-          }
-        }
+        // Format the data for display, filtering out invalid coordinates
+        const formattedData = firstHourData.filter(balloon =>
+            Array.isArray(balloon) && balloon.length === 3 &&
+            (balloon[0] !== 0 || balloon[1] !== 0 || balloon[2] !== 0)
+        ).map((balloon, index) => ({
+          id: index,
+          latitude: balloon[0],
+          longitude: balloon[1],
+          altitude: balloon[2],
+          color: `hsl(${(index * 30) % 360}, 70%, 50%)`
+        }));
 
-        if (paths.length === 0) {
-          throw new Error('No valid balloon paths could be created');
-        }
-
-        setBalloonPaths(paths);
+        console.log("Formatted balloon data:", formattedData.length);
+        setBalloonData(formattedData);
         setError(null);
-      } catch (err) {
-        console.error('Error fetching data:', err);
-        setError(err.message);
+      } catch (error) {
+        console.error('Error loading balloon data:', error);
+        setError(error.message);
       } finally {
-        setLoading(false);
+        setIsLoading(false);
       }
     };
 
-    fetchAllData();
+    loadBalloonData();
   }, []);
 
   useEffect(() => {
@@ -88,91 +71,41 @@ const BalloonGlobe = () => {
     return () => clearInterval(interval);
   }, [isPlaying]);
 
-  if (loading) {
+  if (error) {
     return (
-        <div className="w-full h-screen bg-gray-900 flex items-center justify-center text-white">
+        <div className="w-full h-screen flex items-center justify-center bg-gray-900 text-white">
           <div className="text-center">
-            <div className="text-xl mb-4">Loading balloon data...</div>
-            <div className="text-sm text-gray-400">This may take a few moments</div>
+            <div className="text-xl mb-4">Error Loading Data</div>
+            <div className="text-sm text-red-400">{error}</div>
           </div>
         </div>
     );
   }
 
-  if (error) {
+  if (isLoading) {
     return (
-        <div className="w-full h-screen bg-gray-900 flex items-center justify-center text-white">
-          <div className="text-center">
-            <div className="text-xl mb-4">Error loading data</div>
-            <div className="text-sm text-gray-400">{error}</div>
-            <button
-                onClick={() => window.location.reload()}
-                className="mt-4 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
-            >
-              Retry
-            </button>
-          </div>
+        <div className="w-full h-screen flex items-center justify-center bg-gray-900 text-white">
+          <div className="text-xl">Loading Balloon Data...</div>
         </div>
     );
   }
 
   return (
-      <div className="w-full h-screen bg-gray-900 flex items-center justify-center">
-        <div style={{ width: "1200px", height: "800px" }}>
-          <ComposableMap
-              projection="geoEqualEarth"
-              projectionConfig={{
-                scale: 300,
-                center: [0, 0]
-              }}
-              style={{
-                width: "100%",
-                height: "100%",
-                backgroundColor: "#1a365d"
-              }}
-          >
-            <Geographies geography={geoUrl}>
-              {({ geographies }) =>
-                  geographies.map((geo) => (
-                      <Geography
-                          key={geo.rsmKey}
-                          geography={geo}
-                          fill="#2d3748"
-                          stroke="#4a5568"
-                          strokeWidth={0.5}
-                          style={{
-                            default: { outline: "none" },
-                            hover: { outline: "none" },
-                            pressed: { outline: "none" },
-                          }}
-                      />
-                  ))
-              }
-            </Geographies>
-
-            {balloonPaths.map((path, balloonIndex) => (
-                <React.Fragment key={balloonIndex}>
-                  <Line
-                      coordinates={path.map(p => p.coordinates)}
-                      stroke={`hsla(${(balloonIndex * 30) % 360}, 70%, 50%, 0.3)`}
-                      strokeWidth={2}
-                  />
-                  <Marker coordinates={path[currentHour].coordinates}>
-                    <circle
-                        r={5}
-                        fill={`hsla(${(balloonIndex * 30) % 360}, 70%, 50%, 0.8)`}
-                        stroke="#fff"
-                        strokeWidth={1}
-                    />
-                  </Marker>
-                </React.Fragment>
-            ))}
-          </ComposableMap>
+      <div className="relative w-full h-screen">
+        <div className="absolute w-full h-full">
+          <Suspense fallback={
+            <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white">
+              <div className="text-xl">Loading Globe...</div>
+            </div>
+          }>
+            <ThreeComponents balloonData={balloonData} />
+          </Suspense>
         </div>
-        <div className="absolute bottom-4 left-4 text-white">
+
+        <div className="absolute bottom-4 left-4 text-white z-10">
           <div className="text-sm mb-2">
             Hour: {currentHour.toString().padStart(2, '0')}:00 UTC |
-            Tracking {balloonPaths.length} balloons
+            Tracking {balloonData.length} balloons
           </div>
           <button
               onClick={() => setIsPlaying(!isPlaying)}

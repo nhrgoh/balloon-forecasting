@@ -1,150 +1,125 @@
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+import { promises as fs } from 'fs';
+import path from 'path';
 
-// Try to fix and parse malformed JSON
-function tryParseJSON(text) {
-    try {
-        // First try direct parse
-        let parsed = JSON.parse(text);
-        // Replace any NaN values with 0
-        if (Array.isArray(parsed)) {
-            parsed = parsed.map(coord => {
-                if (Array.isArray(coord)) {
-                    return coord.map(val => (Number.isNaN(val) ? 0 : val));
-                }
-                return coord;
-            });
-        }
-        return parsed;
-    } catch (e) {
-        try {
-            // Clean up the text and try to fix common issues
-            let cleaned = text.trim()
-                // Replace NaN with 0 in the raw text
-                .replace(/NaN/g, '0');
-
-            // If it ends with a comma, remove it and add closing bracket
-            if (cleaned.endsWith(',')) {
-                cleaned = cleaned.slice(0, -1) + ']';
-            }
-
-            // If it's missing the outer brackets, add them
-            if (!cleaned.startsWith('[')) cleaned = '[' + cleaned;
-            if (!cleaned.endsWith(']')) cleaned = cleaned + ']';
-
-            // Try to parse the cleaned version
-            return JSON.parse(cleaned);
-        } catch (e2) {
-            console.error('Failed to parse even after cleaning:', e2);
-            return null;
-        }
-    }
-}
+// Cache file path
+const CACHE_FILE = path.join(process.cwd(), 'data-cache.json');
 
 // Validate a single balloon coordinate
 function isValidCoordinate(coord) {
     return Array.isArray(coord) &&
         coord.length === 3 &&
         coord.every(num => typeof num === 'number') &&
-        // Check if it's not [0,0,0] which indicates a missing balloon
-        !(coord[0] === 0 && coord[1] === 0 && coord[2] === 0) &&
-        // Check for NaN values
-        !coord.some(num => Number.isNaN(num));
+        !coord.some(num => Number.isNaN(num)) &&
+        !(coord[0] === 0 && coord[1] === 0 && coord[2] === 0);
 }
 
-async function fetchWithRetry(url, retries = 3) {
-    for (let i = 0; i < retries; i++) {
-        try {
-            const response = await fetch(url);
-            if (response.status === 404) {
-                console.log(`404 error for ${url}, treating as empty data`);
-                return [];
-            }
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+// Clean and parse JSON data
+function parseData(text) {
+    try {
+        // Handle empty or invalid input
+        if (!text || text.trim() === '') return null;
 
-            const text = await response.text();
-            const data = tryParseJSON(text);
+        // Clean the text
+        let cleaned = text
+            .replace(/NaN/g, '0')
+            .replace(/\]\s*,\s*\]/g, ']]')
+            .trim();
 
-            if (!data) {
-                throw new Error('Failed to parse JSON');
-            }
+        // Ensure proper array brackets
+        if (!cleaned.startsWith('[')) cleaned = '[' + cleaned;
+        if (!cleaned.endsWith(']')) cleaned = cleaned + ']';
 
-            return data;
-        } catch (error) {
-            console.error(`Attempt ${i + 1} failed:`, error);
-            if (i === retries - 1) throw error;
-            await delay(1000 * (i + 1));
-        }
+        // Parse and validate
+        const data = JSON.parse(cleaned);
+        return Array.isArray(data) ? data : null;
+    } catch (e) {
+        console.error('Parse error:', e);
+        return null;
+    }
+}
+
+async function fetchHourData(hour) {
+    try {
+        const response = await fetch(
+            `https://a.windbornesystems.com/treasure/${hour.toString().padStart(2, '0')}.json`,
+            { timeout: 5000 } // 5 second timeout
+        );
+
+        if (!response.ok) return null;
+
+        const text = await response.text();
+        return parseData(text);
+    } catch (e) {
+        console.error(`Error fetching hour ${hour}:`, e);
+        return null;
     }
 }
 
 export default async function handler(req, res) {
     try {
-        const hours = Array.from({ length: 24 }, (_, i) => i);
-        const results = [];
-        let lastValidBalloonPositions = [];  // Keep track of last known positions
-
-        for (const hour of hours) {
-            const paddedHour = hour.toString().padStart(2, '0');
-            try {
-                console.log(`Fetching hour ${paddedHour}...`);
-                let hourData = await fetchWithRetry(
-                    `https://a.windbornesystems.com/treasure/${paddedHour}.json`
-                );
-
-                // If this is the first hour with data, use it to initialize lastValidBalloonPositions
-                if (lastValidBalloonPositions.length === 0 && Array.isArray(hourData) && hourData.length > 0) {
-                    lastValidBalloonPositions = hourData.map(coord => {
-                        if (isValidCoordinate(coord)) return coord;
-                        // Replace any NaN values with 0
-                        return coord.map(val => Number.isNaN(val) ? 0 : val);
-                    });
-                }
-
-                // Process each balloon position
-                if (Array.isArray(hourData)) {
-                    // If we have fewer balloons than before, extend with last known positions
-                    while (hourData.length < lastValidBalloonPositions.length) {
-                        hourData.push(lastValidBalloonPositions[hourData.length]);
-                    }
-
-                    // Update positions, keeping last known good position for invalid ones
-                    hourData = hourData.map((coord, index) => {
-                        // First, replace any NaN values with corresponding values from last known position
-                        const processedCoord = coord.map((val, i) =>
-                            Number.isNaN(val) ?
-                                (lastValidBalloonPositions[index] ? lastValidBalloonPositions[index][i] : 0) :
-                                val
-                        );
-
-                        if (isValidCoordinate(processedCoord)) {
-                            lastValidBalloonPositions[index] = processedCoord;
-                            return processedCoord;
-                        }
-                        return lastValidBalloonPositions[index] || [0, 0, 0];
-                    });
-
-                    results.push(hourData);
-                    console.log(`Successfully processed hour ${paddedHour} with ${hourData.length} balloons`);
-                } else {
-                    // If hourData isn't an array, use last known positions
-                    results.push([...lastValidBalloonPositions]);
-                    console.log(`Using last known positions for hour ${paddedHour}`);
-                }
-            } catch (error) {
-                console.error(`Error processing hour ${paddedHour}:`, error);
-                // Use last known positions for this hour
-                results.push([...lastValidBalloonPositions]);
+        // Try to read from cache first
+        try {
+            const cached = await fs.readFile(CACHE_FILE, 'utf8');
+            const data = JSON.parse(cached);
+            if (data && Array.isArray(data) && data.length === 24) {
+                console.log('Serving from cache');
+                return res.status(200).json(data);
             }
-            await delay(100);
+        } catch (e) {
+            console.log('No valid cache found');
         }
 
-        if (results.length === 0) {
-            throw new Error('No valid data could be retrieved');
+        // Fetch all hours in parallel
+        const fetchPromises = Array.from({ length: 24 }, (_, i) => fetchHourData(i));
+        const hourlyData = await Promise.all(fetchPromises);
+
+        // Process and validate the data
+        let lastValidPositions = [];
+        const processedData = hourlyData.map((hourData, hourIndex) => {
+            if (!hourData || !Array.isArray(hourData)) {
+                console.log(`Hour ${hourIndex}: Using last known positions`);
+                return [...lastValidPositions];
+            }
+
+            // Extend hourData if needed
+            while (hourData.length < lastValidPositions.length) {
+                hourData.push(lastValidPositions[hourData.length]);
+            }
+
+            // Process each balloon position
+            const processed = hourData.map((coord, balloonIndex) => {
+                if (!Array.isArray(coord)) {
+                    return lastValidPositions[balloonIndex] || [0, 0, 0];
+                }
+
+                // Clean coordinate
+                const cleanCoord = coord.map((val, i) => {
+                    const num = Number(val);
+                    return Number.isNaN(num) ?
+                        (lastValidPositions[balloonIndex]?.[i] || 0) :
+                        num;
+                });
+
+                if (isValidCoordinate(cleanCoord)) {
+                    lastValidPositions[balloonIndex] = cleanCoord;
+                    return cleanCoord;
+                }
+
+                return lastValidPositions[balloonIndex] || [0, 0, 0];
+            });
+
+            lastValidPositions = [...processed];
+            return processed;
+        });
+
+        // Cache the result
+        try {
+            await fs.writeFile(CACHE_FILE, JSON.stringify(processedData));
+        } catch (e) {
+            console.error('Cache write error:', e);
         }
 
-        res.status(200).json(results);
+        res.status(200).json(processedData);
     } catch (error) {
         console.error('API Error:', error);
         res.status(500).json({ error: error.message });
