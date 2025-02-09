@@ -4,29 +4,56 @@ import { OrbitControls, Stars } from '@react-three/drei';
 import { SphereGeometry, MeshBasicMaterial, TextureLoader, MeshPhongMaterial, BufferGeometry, LineBasicMaterial, Float32BufferAttribute } from 'three';
 import { Line } from '@react-three/drei';
 
-function BalloonPath({ path, color }) {
-    const points = useMemo(() => {
-        return path.map(pos => {
+function BalloonPath({ path }) {
+    const segments = useMemo(() => {
+        const historical = [];
+        const forecast = [];
+        let currentSegment = historical;
+
+        path.forEach((pos) => {
             const lat = pos.latitude * (Math.PI / 180);
             const lng = pos.longitude * (Math.PI / 180);
-            const radius = 1 + (pos.altitude * 0.02); // Match balloon altitude scaling
+            const radius = 1 + (pos.altitude * 0.02);
 
-            return [
+            const point = [
                 radius * Math.cos(lat) * Math.cos(lng),
                 radius * Math.sin(lat),
                 radius * Math.cos(lat) * Math.sin(lng)
             ];
+
+            if (pos.isForecast && currentSegment === historical) {
+                // First forecast point - add it to both segments to connect them
+                historical.push(point);
+                currentSegment = forecast;
+            }
+
+            currentSegment.push(point);
         });
+
+        return { historical, forecast };
     }, [path]);
 
     return (
-        <Line
-            points={points}
-            color={color}
-            lineWidth={1}
-            opacity={0.5}
-            transparent
-        />
+        <>
+            {segments.historical.length > 1 && (
+                <Line
+                    points={segments.historical}
+                    color="#00ff00"
+                    lineWidth={1}
+                    opacity={0.5}
+                    transparent
+                />
+            )}
+            {segments.forecast.length > 1 && (
+                <Line
+                    points={segments.forecast}
+                    color="#ff0000"
+                    lineWidth={1}
+                    opacity={0.5}
+                    transparent
+                />
+            )}
+        </>
     );
 }
 
@@ -71,7 +98,7 @@ function Earth() {
     );
 }
 
-function Scene({ balloonData, balloonPaths, isAutoRotating }) {
+function Scene({ balloonData, balloonPaths, forecastPaths = [], isAutoRotating }) {
     return (
         <Canvas camera={{ position: [0, 0, 2.5], fov: 45 }}>
             <color attach="background" args={['#111827']} />
@@ -88,7 +115,7 @@ function Scene({ balloonData, balloonPaths, isAutoRotating }) {
                 <BalloonPath
                     key={`path-${index}`}
                     path={path}
-                    color={path[0]?.color}
+                    defaultColor="#00ff00"
                 />
             ))}
 
