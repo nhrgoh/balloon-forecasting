@@ -13,8 +13,9 @@
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "@react-three/fiber": "^8.15.11",
-    "@react-three/drei": "^9.88.13",
-    "three": "^0.158.0"
+    "@react-three/drei": "latest",
+    "three": "latest",
+    "three-mesh-bvh": "latest"
   },
   "devDependencies": {
     "autoprefixer": "10.4.16",
