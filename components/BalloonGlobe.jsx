@@ -290,6 +290,9 @@ const BalloonGlobe = () => {
                         <p>• Green paths: historical data</p>
                         <p>• Red paths: forecasted positions</p>
                         <p>• Heights are not to scale</p>
+                        <p>See more: <a href="https://github.com/nhrgoh/balloon-forecasting"
+                                        className="text-blue-600 underline hover:text-blue-800">Balloon Forecasting</a>
+                        </p>
                     </div>
                 </div>
             </div>
