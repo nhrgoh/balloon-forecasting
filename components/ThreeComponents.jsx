@@ -5,15 +5,11 @@ import {
     SphereGeometry,
     MeshBasicMaterial,
     TextureLoader,
-    MeshPhongMaterial,
     Color,
-    BufferGeometry,
-    LineBasicMaterial,
-    Float32BufferAttribute
 } from 'three';
 import { Line } from '@react-three/drei';
 
-import { interpolatePath, smoothPath } from '../utils/interpolation';
+const EARTH_RADIUS = 0.5;
 
 function BalloonPath({ path }) {
     const segments = useMemo(() => {
@@ -21,13 +17,12 @@ function BalloonPath({ path }) {
         const forecast = [];
         let currentSegment = historical;
 
-        // First interpolate and smooth the path
-        const smoothedPath = smoothPath(interpolatePath(path, 5), 3);
-
-        smoothedPath.forEach((pos) => {
+        path.forEach((pos) => {
             const lat = pos.latitude * (Math.PI / 180);
             const lng = pos.longitude * (Math.PI / 180);
-            const radius = 1 + (pos.altitude * 0.02);
+            const minAltitudeScale = 0.001;
+            const altitudeScale = Math.max(minAltitudeScale, pos.altitude * 0.002);
+            const radius = EARTH_RADIUS + altitudeScale;
 
             const point = [
                 radius * Math.cos(lat) * Math.cos(lng),
@@ -36,7 +31,6 @@ function BalloonPath({ path }) {
             ];
 
             if (pos.isForecast && currentSegment === historical) {
-                // First forecast point - add it to both segments to connect them
                 historical.push(point);
                 currentSegment = forecast;
             }
@@ -72,12 +66,15 @@ function BalloonPath({ path }) {
 }
 
 function Balloon({ latitude, longitude, altitude, color }) {
-    const geometry = useMemo(() => new SphereGeometry(0.01, 16, 16), []);
+    const geometry = useMemo(() => new SphereGeometry(0.005, 16, 16), []);
     const material = useMemo(() => new MeshBasicMaterial({ color }), [color]);
 
     const lat = latitude * (Math.PI / 180);
     const lng = longitude * (Math.PI / 180);
-    const radius = 1 + (altitude * 0.02);
+    const minAltitudeScale = 0.001;
+    const altitudeScale = Math.max(minAltitudeScale, altitude * 0.002);
+    const radius = EARTH_RADIUS + altitudeScale;
+
     const x = radius * Math.cos(lat) * Math.cos(lng);
     const y = radius * Math.sin(lat);
     const z = radius * Math.cos(lat) * Math.sin(lng);
@@ -100,7 +97,7 @@ function Earth() {
 
     return (
         <mesh>
-            <sphereGeometry args={[1, 64, 64]} />
+            <sphereGeometry args={[EARTH_RADIUS, 64, 64]} />
             <meshPhongMaterial
                 map={colorMap}
                 bumpMap={bumpMap}
@@ -115,17 +112,16 @@ function Earth() {
     );
 }
 
-function Scene({ balloonData, balloonPaths, forecastPaths = [], isAutoRotating }) {
+function Scene({ balloonData, balloonPaths, isAutoRotating }) {
     return (
-        <Canvas camera={{ position: [0, 0, 2.5], fov: 45 }}>
+        <Canvas camera={{ position: [0, 0, 1.5], fov: 45 }}>
             <color attach="background" args={['#111827']} />
 
-            {/* Enhanced lighting setup */}
             <ambientLight intensity={0.8} />
             <directionalLight
-                position={[5, 3, 5]}
+                position={[2.5, 1.5, 2.5]}
                 intensity={1.5}
-                castShadow
+                castShadow={false}
             />
             <hemisphereLight
                 skyColor="#ffffff"
@@ -134,8 +130,8 @@ function Scene({ balloonData, balloonPaths, forecastPaths = [], isAutoRotating }
             />
 
             <Stars
-                radius={100}
-                depth={50}
+                radius={50}
+                depth={25}
                 count={5000}
                 factor={4}
                 saturation={0}
@@ -165,8 +161,8 @@ function Scene({ balloonData, balloonPaths, forecastPaths = [], isAutoRotating }
             <OrbitControls
                 enablePan={false}
                 enableZoom={true}
-                minDistance={1.5}
-                maxDistance={4}
+                minDistance={0.75}
+                maxDistance={2}
                 autoRotate={isAutoRotating}
                 autoRotateSpeed={0.5}
             />

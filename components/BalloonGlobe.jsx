@@ -12,7 +12,7 @@ const MAX_BALLOONS = 50;
 
 const BalloonGlobe = () => {
     const [allBalloonData, setAllBalloonData] = useState([]);
-    const [currentHour, setCurrentHour] = useState(0); // Start at oldest data point (23.json)
+    const [currentHour, setCurrentHour] = useState(0);
     const [isPlaying, setIsPlaying] = useState(true);
     const TOTAL_HOURS = 48; // 24 past hours + 24 forecast hours
     const [isAutoRotating, setIsAutoRotating] = useState(true);
@@ -37,8 +37,8 @@ const BalloonGlobe = () => {
                         latitude: balloon[0],
                         longitude: balloon[1],
                         altitude: balloon[2],
-                        hour: 23 - hour, // Reverse the hour count
-                        color: '#00ff00' // Fixed green color for all balloons
+                        hour: 23 - hour,
+                        color: '#00ff00'
                     }))
                 );
 
@@ -68,16 +68,12 @@ const BalloonGlobe = () => {
     // Fetch forecast paths when reaching current time or if they're not available
     useEffect(() => {
         const fetchForecasts = async () => {
-            // Fetch forecasts when we reach current time (hour 23) or if we're in forecast mode but don't have paths
             if ((currentHour === 23 || (currentHour > 23 && forecastPaths.length === 0)) && allBalloonData.length > 0) {
                 console.log('Fetching forecasts for current positions...');
-                const currentPositions = allBalloonData[23]; // Get positions from 00.json (last in array)
-
-                console.log('Current balloon positions for forecast:', currentPositions);
+                const currentPositions = allBalloonData[23];
 
                 const forecasts = await Promise.all(
                     currentPositions.map(async (balloon, index) => {
-                        console.log(`Fetching forecast for balloon ${index}:`, balloon);
                         const path = await getForecastPath(
                             balloon.latitude,
                             balloon.longitude,
@@ -87,21 +83,11 @@ const BalloonGlobe = () => {
                             console.warn(`Failed to get forecast path for balloon ${index}`);
                             return null;
                         }
-                        console.log(`Received forecast path for balloon ${index}:`, {
-                            positions: path.length,
-                            start: path[0],
-                            end: path[path.length - 1]
-                        });
                         return path;
                     })
                 );
 
                 const validForecasts = forecasts.filter(Boolean);
-                console.log('Setting valid forecast paths:', {
-                    total: forecasts.length,
-                    valid: validForecasts.length,
-                    firstPathLength: validForecasts[0]?.length
-                });
                 setForecastPaths(validForecasts);
             }
         };
@@ -135,10 +121,8 @@ const BalloonGlobe = () => {
     // Calculate the displayed hour based on slider position
     let displayedHour;
     if (currentHour <= 23) {
-        // For historical data
         displayedHour = (currentUTCHour - (23 - currentHour) + 24) % 24;
     } else {
-        // For forecast data
         displayedHour = (currentUTCHour + (currentHour - 23)) % 24;
     }
 
@@ -150,21 +134,19 @@ const BalloonGlobe = () => {
         currentBalloons = allBalloonData[currentHour] || [];
         currentBalloons = currentBalloons.map(balloon => ({
             ...balloon,
-            color: '#00ff00', // Green for historical data
+            color: '#00ff00',
             isForecast: false
         }));
 
-        // Get historical paths up to current hour
         balloonPaths = currentBalloons.map((balloon, index) => {
             const historicalPath = allBalloonData
-                .slice(0, currentHour + 1)  // Take data from start up to current hour
+                .slice(0, currentHour + 1)
                 .map(hourData => ({
                     ...hourData[index],
                     isForecast: false
                 }));
 
             if (currentHour === 23 && forecastPaths[index]) {
-                // Add only the first point of the forecast path at hour 23
                 return [...historicalPath, forecastPaths[index][0]];
             }
             return historicalPath;
@@ -173,22 +155,15 @@ const BalloonGlobe = () => {
     // Handle display of forecast data (hours 24 to 47)
     else {
         const forecastHour = currentHour - 24;
-        console.log('Processing forecast display:', {
-            currentHour,
-            forecastHour,
-            availableForecasts: forecastPaths.length
-        });
 
         if (forecastPaths.length === 0) {
             console.log('No forecast paths available, using last known positions');
-            // Instead of returning, use the last known positions
             currentBalloons = allBalloonData[23].map(balloon => ({
                 ...balloon,
-                color: '#ff0000', // Red for forecast position
+                color: '#ff0000',
                 isForecast: true
             }));
 
-            // Use historical paths while forecasts are loading
             balloonPaths = allBalloonData[23].map((_, index) => {
                 return allBalloonData.map(hourData => ({
                     ...hourData[index],
@@ -196,7 +171,6 @@ const BalloonGlobe = () => {
                 }));
             });
 
-            // Trigger forecast fetch
             const currentPositions = allBalloonData[23];
             currentPositions.forEach(async (balloon, index) => {
                 const path = await getForecastPath(
@@ -213,55 +187,37 @@ const BalloonGlobe = () => {
                 }
             });
         } else {
-            // Get all historical paths
             balloonPaths = allBalloonData[23].map((_, index) => {
-                // Get complete historical path
                 const historicalPath = allBalloonData.map(hourData => ({
                     ...hourData[index],
                     isForecast: false
                 }));
 
-                // Get forecast path up to current forecast hour
                 const forecastPath = forecastPaths[index] || [];
-                // Add one point at a time during the forecast
                 const currentForecast = forecastPath.slice(0, forecastHour + 1).map(pos => ({
                     ...pos,
                     isForecast: true
                 }));
 
-                console.log(`Balloon ${index} path data:`, {
-                    historicalLength: historicalPath.length,
-                    forecastLength: currentForecast.length,
-                    totalLength: historicalPath.length + currentForecast.length
-                });
-
                 return [...historicalPath, ...currentForecast];
             });
 
-            // Set current balloon positions from forecast data
             currentBalloons = forecastPaths.map((path, index) => {
                 if (!path || !path[forecastHour]) {
-                    console.log(`Missing forecast position for balloon ${index} at hour ${forecastHour}`);
                     return null;
                 }
 
                 const pos = path[forecastHour];
-                console.log(`Current forecast position for balloon ${index}:`, pos);
 
                 return {
                     id: index,
                     latitude: pos.latitude,
                     longitude: pos.longitude,
                     altitude: pos.altitude,
-                    color: '#ff0000', // Red for forecast position
+                    color: '#ff0000',
                     isForecast: true
                 };
             }).filter(Boolean);
-
-            console.log('Forecast render data:', {
-                pathCount: balloonPaths.length,
-                balloonCount: currentBalloons.length
-            });
         }
     }
 
@@ -333,7 +289,7 @@ const BalloonGlobe = () => {
                         <p>• Forecasts use OpenWeather wind data for trajectory prediction</p>
                         <p>• Green paths: historical data</p>
                         <p>• Red paths: forecasted positions</p>
-                        <p>• Heights not to scale</p>
+                        <p>• Heights are not to scale</p>
                     </div>
                 </div>
             </div>
