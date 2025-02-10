@@ -1,8 +1,19 @@
 import React, { useMemo } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
-import { SphereGeometry, MeshBasicMaterial, TextureLoader, MeshPhongMaterial, BufferGeometry, LineBasicMaterial, Float32BufferAttribute } from 'three';
+import {
+    SphereGeometry,
+    MeshBasicMaterial,
+    TextureLoader,
+    MeshPhongMaterial,
+    Color,
+    BufferGeometry,
+    LineBasicMaterial,
+    Float32BufferAttribute
+} from 'three';
 import { Line } from '@react-three/drei';
+
+import { interpolatePath, smoothPath } from '../utils/interpolation';
 
 function BalloonPath({ path }) {
     const segments = useMemo(() => {
@@ -10,7 +21,10 @@ function BalloonPath({ path }) {
         const forecast = [];
         let currentSegment = historical;
 
-        path.forEach((pos) => {
+        // First interpolate and smooth the path
+        const smoothedPath = smoothPath(interpolatePath(path, 5), 3);
+
+        smoothedPath.forEach((pos) => {
             const lat = pos.latitude * (Math.PI / 180);
             const lng = pos.longitude * (Math.PI / 180);
             const radius = 1 + (pos.altitude * 0.02);
@@ -90,9 +104,12 @@ function Earth() {
             <meshPhongMaterial
                 map={colorMap}
                 bumpMap={bumpMap}
-                bumpScale={0.05}
+                bumpScale={0.015}
                 specularMap={specularMap}
-                shininess={5}
+                specular={new Color(0x666666)}
+                shininess={10}
+                transparent={true}
+                opacity={1}
             />
         </mesh>
     );
@@ -103,11 +120,27 @@ function Scene({ balloonData, balloonPaths, forecastPaths = [], isAutoRotating }
         <Canvas camera={{ position: [0, 0, 2.5], fov: 45 }}>
             <color attach="background" args={['#111827']} />
 
-            <ambientLight intensity={0.1} />
-            <pointLight position={[100, 100, 100]} intensity={2.5} />
-            <pointLight position={[-100, -100, -100]} intensity={1.5} />
+            {/* Enhanced lighting setup */}
+            <ambientLight intensity={0.8} />
+            <directionalLight
+                position={[5, 3, 5]}
+                intensity={1.5}
+                castShadow
+            />
+            <hemisphereLight
+                skyColor="#ffffff"
+                groundColor="#000000"
+                intensity={0.5}
+            />
 
-            <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade />
+            <Stars
+                radius={100}
+                depth={50}
+                count={5000}
+                factor={4}
+                saturation={0}
+                fade
+            />
 
             <Earth />
 

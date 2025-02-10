@@ -164,8 +164,8 @@ const BalloonGlobe = () => {
                 }));
 
             if (currentHour === 23 && forecastPaths[index]) {
-                // Add forecast path only when we're at current time (hour 23 is now 00.json)
-                return [...historicalPath, ...forecastPaths[index].slice(1)];
+                // Add only the first point of the forecast path at hour 23
+                return [...historicalPath, forecastPaths[index][0]];
             }
             return historicalPath;
         });
@@ -223,6 +223,7 @@ const BalloonGlobe = () => {
 
                 // Get forecast path up to current forecast hour
                 const forecastPath = forecastPaths[index] || [];
+                // Add one point at a time during the forecast
                 const currentForecast = forecastPath.slice(0, forecastHour + 1).map(pos => ({
                     ...pos,
                     isForecast: true
@@ -266,6 +267,11 @@ const BalloonGlobe = () => {
 
     return (
         <div className="relative w-full h-screen">
+            {/* Title and Description */}
+            <div className="absolute top-4 left-0 right-0 z-10 text-center text-white">
+                <h1 className="text-3xl font-bold mb-2">Global Balloon Tracker</h1>
+                <p className="text-lg text-gray-300">Real-time tracking and forecasting of high-altitude balloons</p>
+            </div>
             <div className="absolute w-full h-full">
                 <Suspense fallback={
                     <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white">
@@ -315,6 +321,19 @@ const BalloonGlobe = () => {
                         >
                             {isAutoRotating ? 'Disable Rotation' : 'Enable Rotation'}
                         </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Footnotes Box */}
+            <div className="absolute bottom-4 right-4 text-white z-10">
+                <div className="flex flex-col gap-2 bg-gray-800 bg-opacity-80 p-4 rounded-lg max-w-xs">
+                    <div className="text-xs">
+                        <p>• Limited to 50 balloons because of weather API limits</p>
+                        <p>• Forecasts use OpenWeather wind data for trajectory prediction</p>
+                        <p>• Green paths: historical data</p>
+                        <p>• Red paths: forecasted positions</p>
+                        <p>• Heights not to scale</p>
                     </div>
                 </div>
             </div>
